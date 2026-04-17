@@ -35,12 +35,44 @@ export interface MealPlan {
   meal_type: 'breakfast' | 'lunch' | 'dinner';
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface Order {
+  id: string;
+  items: string[];
+  totalPrice: number;
+  currency: string;
+  storeName: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  createdAt: string;
+}
+
 export interface AgentResponse {
   thought_process: string;
   suggestions: Suggestion[];
   calendar_tip: string;
   meal_plan?: MealPlan[];
-  estimated_total_price_rub?: number;
+  estimated_total_price?: number;
+  currency?: string;
+  cheapest_store_id?: string;
+  store_price_comparison?: { storeId: string; estimatedPrice: number; storeName: string }[];
+  audio_response?: string; // Text to be spoken
+  follow_up_question?: string; // Next question for the user
+  shopping_list_updates?: {
+    add?: string[];
+    remove?: string[];
+  };
+  profile_updates?: {
+    age?: number;
+    gender?: "male" | "female" | "other";
+    chronicIllnesses?: string[];
+    familySize?: number;
+    country?: string;
+    city?: string;
+  };
 }
 
 export interface UserProfile {
@@ -52,6 +84,8 @@ export interface UserProfile {
   gender?: "male" | "female" | "other";
   age?: number;
   chronicIllnesses?: string[];
+  country?: string;
+  city?: string;
 }
 
 export interface InventoryItem {

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AgentResponse, UserProfile, InventoryItem, ProfileRecommendation } from "../types";
+import { AgentResponse, UserProfile, InventoryItem, ProfileRecommendation, ChatMessage } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -15,12 +15,27 @@ const SYSTEM_INSTRUCTION = `Ты — "Кулинарный Агент по Ми�
 - МОДУЛЬ "ХОЛОДИЛЬНИК": Анализируй входящие данные (текст, описание фото).
 - МОДУЛЬ "ПЕРСОНАЛИЗАЦИЯ": Учитывай профиль пользователя (аллергии, диеты: веганское, безглютеновое, количество человек в семье).
 - МОДУЛЬ "БЮДЖЕТ": При выборе блюд учитывай экономию, предлагай аналоги дорогих ингредиентов. Рассчитывай количество ингредиентов исходя из количества человек в профиле и ВСЕГДА указывай количество и единицы измерения в списках ингредиентов.
+- МОДУЛЬ "ПРОФИЛЬ": Если в процессе диалога ты узнаешь новые данные о пользователе (возраст, пол, болезни, количество человек), ОБЯЗАТЕЛЬНО верни их в поле "profile_updates". Это позволит системе автоматически обновить профиль.
 - МОДУЛЬ "КАЛЕНДАРЬ": Умеешь планировать меню на неделю (7 дней по 3 приема пищи). Если пользователь просит план на неделю, ОБЯЗАТЕЛЬНО заполни массив "meal_plan" на ближайшие 7 дней (от текущей даты), предлагая разнообразные блюда на основе профиля и холодильника.
-- МОДУЛЬ "SHOPPING": Генерируй список недостающих продуктов со ссылками на поиск (указывай: "Ссылка на поиск: [запрос]"). ОБЯЗАТЕЛЬНО указывай количество и единицы измерения для каждого продукта (напр. "Молоко (1 л)", "Яйца (10 шт)"). Рассчитывай "estimated_total_price_rub" как сумму стоимостей всех недостающих продуктов, учитывая количество человек в семье.
+- МОДУЛЬ "SHOPPING": Генерируй список недостающих продуктов со ссылками на поиск. ОБЯЗАТЕЛЬНО указывай количество и единицы измерения для каждого продукта. Рассчитывай "estimated_total_price" в местной валюте (например, GBP, USD, RUB). Если пользователь просит добавить что-то в список покупок или удалить из него голосом, ОБЯЗАТЕЛЬНО верни изменения в поле "shopping_list_updates". 
+- МОДУЛЬ "ORDERING": Если пользователь говорит "Закажи всё", "Купи это" или "Оформи заказ", Твоя задача — подтвердить готовность корзины. В "audio_response" скажи, что ты собрал все продукты в корзину и готов перенаправить в магазин для финальной проверки. ОБЯЗАТЕЛЬНО убедись, что список "missing_ingredients" полон.
+- МОДУЛЬ "ГЕОЛОКАЦИЯ И МАГАЗИНЫ": Если в профиле указана страна (country) и город (city), ТЫ ОБЯЗАН предлагать магазины, которые реально существуют в этом регионе. 
+  - Если Россия: Магнит, Пятерочка, Ашан, Метро, Лента, ВкусВилл, Глобус.
+  - Если Великобритания: Tesco, Sainsbury's, Asda, Morrisons, Waitrose, M&S, Lidl, Aldi.
+  - Если США: Walmart, Target, Whole Foods, Kroger, Costco, Safeway.
+  - Если другая страна: Подбери топовые супермаркеты самостоятельно.
+  Укажи "cheapest_store_id" (walmart, tesco, и т.д.) и заполни массив "store_price_comparison", включая название магазина "storeName".
+- МОДУЛЬ "ДИАЛОГ": Ты можешь вести живой диалог. Если информации недостаточно (непонятно что в холодильнике, сколько людей будут есть, нужно ли заказывать продукты), ЗАДАВАЙ уточняющие вопросы в поле "follow_up_question". Твои ответы в поле "audio_response" должны быть краткими, вежливыми и приспособленными для озвучивания голосом.
 
 СТРУКТУРА JSON-ОТВЕТА:
 {
   "thought_process": "Твой анализ (цепочка мыслей): почему ты выбрал эти блюда, как они вписываются в бюджет и диету",
+  "audio_response": "Твой краткий ответ пользователю для озвучки (например: 'Понял, сделаю пиццу. А что у вас осталось в холодильнике?')",
+  "follow_up_question": "Уточняющий вопрос (например: 'Что у Вас есть в холодильнике?') или null, если вопросов нет",
+  "shopping_list_updates": {
+    "add": ["Молоко", "Хлеб"],
+    "remove": ["Яблоки"]
+  },
   "suggestions": [
     {
       "dish_name": "...",
@@ -50,7 +65,13 @@ const SYSTEM_INSTRUCTION = `Ты — "Кулинарный Агент по Ми�
       "meal_type": "breakfast | lunch | dinner"
     }
   ],
-  "estimated_total_price_rub": 1250
+  "estimated_total_price": 1250,
+  "currency": "RUB",
+  "cheapest_store_id": "magnit",
+  "store_price_comparison": [
+    { "storeId": "magnit", "storeName": "Magnit", "estimatedPrice": 1100 },
+    { "storeId": "lenta", "storeName": "Lenta", "estimatedPrice": 1300 }
+  ]
 }`;
 
 const RECOMMENDATION_SYSTEM_INSTRUCTION = `Ты — эксперт по нутрициологии и домашней экономике. 
@@ -216,7 +237,8 @@ export async function getCulinaryAdvice(
   inventory: InventoryItem[],
   profile: UserProfile,
   query: string,
-  language: string = 'ru'
+  language: string = 'ru',
+  history: ChatMessage[] = []
 ): Promise<AgentResponse> {
   const langMap: Record<string, string> = {
     'ru': 'Русский',
@@ -234,10 +256,13 @@ export async function getCulinaryAdvice(
   const inventoryText = inventory.map(i => `${i.name}${i.quantity ? ` (${i.quantity})` : ''}`).join(', ');
   const today = new Date().toISOString().split('T')[0];
   
+  const formattedHistory = history.map(msg => `${msg.role === 'user' ? 'Пользователь' : 'Шеф'}: ${msg.content}`).join('\n');
+
   const prompt = `
 Контекст:
 - Текущая дата: ${today}
-- В холодильнике: ${inventoryText || 'пусто'}
+- В холодильнике (уже известно): ${inventoryText || 'пусто'}
+- Местоположение: ${profile.country || 'неизвестно'}, ${profile.city || 'неизвестно'}
 - Тип профиля: ${profile.profileType === 'individual' ? 'Индивидуальный' : `Семейный (${profile.familySize || 2} чел.)`}
 - Профиль пользователя: 
   - Пол: ${profile.gender || 'не указан'}
@@ -246,7 +271,13 @@ export async function getCulinaryAdvice(
   - Аллергии: ${profile.allergies.join(', ') || 'нет'}
   - Диеты: ${profile.diets.join(', ') || 'нет'}
   - Бюджет: ${profile.budget}
-- Запрос пользователя: ${query}
+
+История диалога:
+${formattedHistory || 'Начало диалога'}
+
+Новый запрос пользователя: ${query}
+
+Важно: Если в запросе пользователь сообщает о возрасте, поле или болезнях - учти это в анализе, но приоритет отдавай диалогу. Если пользователь хочет что-то приготовить, начни диалог согласно МОДУЛЮ "ДИАЛОГ". Сначала узнай про холодильник (если там пусто или неизвестно), потом про количество людей, потом предложи заказ продуктов.
 
 Сгенерируй ответ в формате JSON согласно системной инструкции на языке: ${currentLang}.
 `;
@@ -261,6 +292,15 @@ export async function getCulinaryAdvice(
         type: Type.OBJECT,
         properties: {
           thought_process: { type: Type.STRING },
+          audio_response: { type: Type.STRING },
+          follow_up_question: { type: Type.STRING, nullable: true },
+          shopping_list_updates: {
+            type: Type.OBJECT,
+            properties: {
+              add: { type: Type.ARRAY, items: { type: Type.STRING } },
+              remove: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
+          },
           suggestions: {
             type: Type.ARRAY,
             items: {
@@ -311,9 +351,34 @@ export async function getCulinaryAdvice(
               required: ["day", "dish_name", "meal_type"]
             }
           },
-          estimated_total_price_rub: { type: Type.NUMBER }
+          estimated_total_price: { type: Type.NUMBER },
+          currency: { type: Type.STRING },
+          cheapest_store_id: { type: Type.STRING },
+          store_price_comparison: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                storeId: { type: Type.STRING },
+                storeName: { type: Type.STRING },
+                estimatedPrice: { type: Type.NUMBER }
+              },
+              required: ["storeId", "storeName", "estimatedPrice"]
+            }
+          },
+          profile_updates: {
+            type: Type.OBJECT,
+            properties: {
+              age: { type: Type.NUMBER },
+              gender: { type: Type.STRING, enum: ["male", "female", "other"] },
+              chronicIllnesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+              familySize: { type: Type.NUMBER },
+              country: { type: Type.STRING },
+              city: { type: Type.STRING }
+            }
+          }
         },
-        required: ["thought_process", "suggestions", "calendar_tip", "estimated_total_price_rub"]
+        required: ["thought_process", "audio_response", "suggestions", "calendar_tip", "estimated_total_price", "currency"]
       }
     }
   });

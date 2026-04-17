@@ -2,7 +2,9 @@
   "name": "Кулинарный Агент на Твоей Кухне",
   "description": "Интеллектуальная экосистема для управления питанием, анализа холодильника, планирования меню и покупок.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "microphone",
+    "geolocation"
   ],
   "majorCapabilities": []
 }
