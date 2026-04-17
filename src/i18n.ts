@@ -75,7 +75,10 @@ const resources = {
       "rec_lifestyle": "Образ жизни",
       "rec_budget": "Экономия",
       "market": "Маркет",
-      "save": "Сохранить и закрыть"
+      "save": "Сохранить и закрыть",
+      "cooking_started_msg": "Приятного аппетита! Пошаговый режим приготовления активирован.",
+      "plan_weekly": "Запланировать на неделю",
+      "weekly_plan_loading": "Шеф составляет меню на 7 дней..."
     }
   },
   en: {
@@ -149,7 +152,10 @@ const resources = {
       "rec_lifestyle": "Lifestyle",
       "rec_budget": "Savings",
       "market": "Market",
-      "save": "Save and Close"
+      "save": "Save and Close",
+      "cooking_started_msg": "Enjoy your preparation! Step-by-step cooking mode is activated.",
+      "plan_weekly": "Plan for the week",
+      "weekly_plan_loading": "Chef is planning for 7 days..."
     }
   },
   zh: {
@@ -222,7 +228,10 @@ const resources = {
       "rec_lifestyle": "生活方式",
       "rec_budget": "节省",
       "market": "市场",
-      "save": "保存并关闭"
+      "save": "保存并关闭",
+      "cooking_started_msg": "祝您大快朵颐！分步烹饪模式已激活。",
+      "plan_weekly": "计划本周",
+      "weekly_plan_loading": "厨师正在规划 7 天的菜单..."
     }
   }
 };

@@ -18,7 +18,8 @@ import {
   Menu as MenuIcon,
   Settings,
   Package,
-  Terminal
+  Terminal,
+  Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
@@ -105,13 +106,24 @@ export default function App() {
     toast.info(t('empty_fridge'));
   };
 
-  const handleGetAdvice = async (overrideInventory?: InventoryItem[], overrideProfile?: UserProfile) => {
+  const handleGetAdvice = async (customQuery?: string, overrideInventory?: InventoryItem[], overrideProfile?: UserProfile) => {
     setIsLoading(true);
+    const activeQuery = customQuery || query || t('query_placeholder');
+    if (customQuery === t('plan_weekly')) {
+      toast.promise(
+        new Promise((resolve) => resolve(null)), 
+        {
+          loading: t('weekly_plan_loading'),
+          success: t('analyzing'),
+        }
+      );
+    }
+
     try {
       const response = await getCulinaryAdvice(
         overrideInventory || inventory, 
         overrideProfile || profile, 
-        query || t('query_placeholder'),
+        activeQuery,
         i18n.language
       );
       setAiResponse(response);
@@ -156,7 +168,7 @@ export default function App() {
         handleGetRecommendations(currentProfile);
       }
       if (aiResponse) {
-        handleGetAdvice(currentInventory, currentProfile);
+        handleGetAdvice(undefined, currentInventory, currentProfile);
       }
     };
 
@@ -741,12 +753,17 @@ export default function App() {
                               </div>
 
                               <div className="flex gap-3">
-                                <Button className="flex-1 bg-[#2D6A4F] hover:bg-[#1B4332] rounded-2xl h-14 font-bold text-lg shadow-lg shadow-[#2D6A4F]/20">
+                                <Button 
+                                  className="flex-1 bg-[#2D6A4F] hover:bg-[#1B4332] rounded-2xl h-14 font-bold text-lg shadow-lg shadow-[#2D6A4F]/20 interactive-button"
+                                  onClick={() => {
+                                    toast.success(t('cooking_started_msg') || 'Приятного аппетита! Пошаговый режим активирован.');
+                                  }}
+                                >
                                   {t('start_cooking')}
                                 </Button>
                                 <Button 
                                   variant="outline" 
-                                  className="rounded-2xl h-14 w-14 border-black/5 hover:bg-[#F4F7F5]" 
+                                  className="rounded-2xl h-14 w-14 border-black/5 hover:bg-[#F4F7F5] interactive-button" 
                                   onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(suggestion.shopping_links.replace('Ссылка на поиск: ', ''))}`, '_blank')}
                                 >
                                   <ExternalLink className="w-6 h-6" />
@@ -754,37 +771,39 @@ export default function App() {
                               </div>
                             </div>
                           </DialogContent>
-                        </Dialog>
+                        
+                          <div className="flex gap-4 text-[12px] text-[#52796F] font-medium">
+                            <span className="flex items-center gap-1">⏱️ {suggestion.time_minutes} {t('time_unit')}</span>
+                            <span className="flex items-center gap-1">🔥 {suggestion.difficulty}</span>
+                            <span className="text-[#2D6A4F] font-bold">$ {suggestion.suitability.includes('бюджетное') ? t('budget_low') : t('budget_medium')}</span>
+                          </div>
 
-                        <div className="flex gap-4 text-[12px] text-[#52796F] font-medium">
-                          <span className="flex items-center gap-1">⏱️ {suggestion.time_minutes} {t('time_unit')}</span>
-                          <span className="flex items-center gap-1">🔥 {suggestion.difficulty}</span>
-                          <span className="text-[#2D6A4F] font-bold">$ {suggestion.suitability.includes('бюджетное') ? t('budget_low') : t('budget_medium')}</span>
-                        </div>
+                          <div className="space-y-3">
+                            {suggestion.recipe.steps.map((step, i) => (
+                              <div key={i} className="flex gap-3 text-[13px] text-brand-secondary leading-relaxed">
+                                <span className="font-bold text-brand-primary shrink-0">0{i + 1}</span>
+                                <p className="line-clamp-2">{step.instruction}</p>
+                              </div>
+                            ))}
+                          </div>
 
-                        <div className="space-y-3">
-                          {suggestion.recipe.steps.map((step, i) => (
-                            <div key={i} className="flex gap-3 text-[13px] text-brand-secondary leading-relaxed">
-                              <span className="font-bold text-brand-primary shrink-0">0{i + 1}</span>
-                              <p className="line-clamp-2">{step.instruction}</p>
+                          <div className="mt-auto pt-4 space-y-4">
+                            <div className="bg-[#FFF8E1] p-4 border-l-4 border-[#FFD54F] rounded-r-lg text-[12px] italic">
+                              <strong>Секрет шефа:</strong> {suggestion.recipe.chef_secret}
                             </div>
-                          ))}
-                        </div>
-
-                        <div className="mt-auto pt-4 space-y-4">
-                          <div className="bg-[#FFF8E1] p-4 border-l-4 border-[#FFD54F] rounded-r-lg text-[12px] italic">
-                            <strong>Секрет шефа:</strong> {suggestion.recipe.chef_secret}
+                            
+                            <div className="flex gap-2">
+                              <DialogTrigger render={
+                                <Button className="flex-1 bg-[#2D6A4F] hover:bg-[#1B4332] rounded-xl h-11 font-bold interactive-button">
+                                  {t('start_cooking')}
+                                </Button>
+                              } />
+                              <Button variant="outline" className="rounded-xl h-11 border-black/5 hover:bg-[#F4F7F5] interactive-button" onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(suggestion.shopping_links.replace('Ссылка на поиск: ', ''))}`, '_blank')}>
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
-                          
-                          <div className="flex gap-2">
-                            <Button className="flex-1 bg-[#2D6A4F] hover:bg-[#1B4332] rounded-xl h-11 font-bold">
-                              Начать готовить
-                            </Button>
-                            <Button variant="outline" className="rounded-xl h-11 border-black/5 hover:bg-[#F4F7F5]" onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(suggestion.shopping_links.replace('Ссылка на поиск: ', ''))}`, '_blank')}>
-                              <ExternalLink className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
+                        </Dialog>
                       </motion.div>
                     ))}
                   </motion.div>
@@ -804,9 +823,19 @@ export default function App() {
         <div className="space-y-6 flex flex-col">
           <Card className="border-none shadow-sm bg-white rounded-3xl overflow-hidden h-fit">
             <CardHeader className="p-6 pb-2">
-              <CardTitle className="text-[14px] font-bold uppercase text-brand-secondary flex items-center gap-2">
-                <Calendar className="w-4 h-4" /> {t('calendar')}
-              </CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-[14px] font-bold uppercase text-brand-secondary flex items-center gap-2">
+                  <Calendar className="w-4 h-4" /> {t('calendar')}
+                </CardTitle>
+                <button 
+                  onClick={() => handleGetAdvice(t('plan_weekly'))}
+                  disabled={isLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-primary/10 text-brand-primary text-[10px] font-bold hover:bg-brand-primary/20 transition-all uppercase tracking-wider disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  {t('plan_weekly')}
+                </button>
+              </div>
             </CardHeader>
             <CardContent className="p-6 pt-0">
               <div className="grid grid-cols-7 gap-1.5 mb-6">
